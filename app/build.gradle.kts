@@ -54,6 +54,11 @@ android {
         jvmTarget = "17"
     }
 
+    lint {
+        // Work around an upstream AndroidX Lifecycle lint detector crash with this Kotlin toolchain.
+        disable += "NullSafeMutableLiveData"
+    }
+
     buildFeatures {
         compose = true
     }
