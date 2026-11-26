@@ -293,7 +293,7 @@ private fun ResultsScreen(exam: ExamConfig, onBack: () -> Unit, onOpen: (Student
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp)) {
             items(results, key = { it.id }) { result ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), onClick = { onOpen(result) }) {
+                Card(onClick = { onOpen(result) }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text("رقم الجلوس: ${result.rollNumber}", fontWeight = FontWeight.Bold)
