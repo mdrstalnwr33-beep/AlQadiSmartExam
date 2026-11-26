@@ -24,6 +24,7 @@ data class StudentResult(
     val wrongCount: Int,
     val blankCount: Int,
     val debugImagePath: String?,
+    val studentName: String = "",
     val scannedAt: Long = System.currentTimeMillis()
 )
 
