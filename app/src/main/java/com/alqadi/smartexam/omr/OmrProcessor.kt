@@ -210,53 +210,74 @@ object OmrProcessor {
         }
     }
 
+    fun hasFourValidCornerMarkers(bitmap: Bitmap): Boolean {
+        if (!ensureInitialized()) return false
+        val rgba = Mat()
+        val gray = Mat()
+        val blurred = Mat()
+        val threshold = Mat()
+        return try {
+            Utils.bitmapToMat(bitmap, rgba)
+            Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY)
+            Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
+            Imgproc.adaptiveThreshold(blurred, threshold, 255.0,
+                Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY_INV, 101, 12.0)
+            val points = findFourCornerMarkers(threshold, gray.rows() * gray.cols())
+            points.release()
+            true
+        } catch (_: Exception) {
+            false
+        } finally {
+            rgba.release(); gray.release(); blurred.release(); threshold.release()
+        }
+    }
+
     private fun findFourCornerMarkers(thresh: Mat, imgArea: Int): MatOfPoint2f {
         val contours = ArrayList<MatOfPoint>()
         val hierarchy = Mat()
         Imgproc.findContours(thresh, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
         hierarchy.release()
-
         val candidates = mutableListOf<Pair<Double, Point>>()
         for (cnt in contours) {
             val area = Imgproc.contourArea(cnt)
-            if (area < 0.00025 * imgArea || area > 0.04 * imgArea) {
-                cnt.release()
-                continue
-            }
-
+            if (area < 0.00025 * imgArea || area > 0.04 * imgArea) { cnt.release(); continue }
             val cnt2f = MatOfPoint2f(*cnt.toArray())
             val peri = Imgproc.arcLength(cnt2f, true)
-            val approx2f = MatOfPoint2f()
-            Imgproc.approxPolyDP(cnt2f, approx2f, 0.04 * peri, true)
-
-            val approxPts = MatOfPoint(*approx2f.toArray())
-            val isQuad = approx2f.rows() == 4 && Imgproc.isContourConvex(approxPts)
-            val rRect = Imgproc.minAreaRect(cnt2f)
-
-            cnt2f.release()
-            approx2f.release()
-            approxPts.release()
-            cnt.release()
-
-            if (!isQuad || rRect.size.width <= 0 || rRect.size.height <= 0) continue
-
-            val aspect = rRect.size.width / rRect.size.height
-            val fill = area / (rRect.size.width * rRect.size.height)
-            if (aspect in 0.65..1.45 && fill >= 0.68) {
-                candidates.add(area to rRect.center)
-            }
+            val approx = MatOfPoint2f()
+            Imgproc.approxPolyDP(cnt2f, approx, 0.04 * peri, true)
+            val approxPts = MatOfPoint(*approx.toArray())
+            val isQuad = approx.rows() == 4 && Imgproc.isContourConvex(approxPts)
+            val rect = Imgproc.minAreaRect(cnt2f)
+            cnt2f.release(); approx.release(); approxPts.release(); cnt.release()
+            if (!isQuad || rect.size.width <= 0 || rect.size.height <= 0) continue
+            val aspect = rect.size.width / rect.size.height
+            val fill = area / (rect.size.width * rect.size.height)
+            if (aspect in 0.65..1.45 && fill >= 0.68) candidates.add(area to rect.center)
         }
-
-        if (candidates.size < 4) {
-            throw IllegalStateException("لم يتم العثور على المربعات السوداء الأربعة في زوايا الورقة (تم رصد ${candidates.size} فقط).")
+        if (candidates.size < 4) throw IllegalStateException("لم يتم العثور على المربعات المرجعية الأربعة.")
+        val points = candidates.sortedByDescending { it.first }.take(4).map { it.second }
+        val tl = points.minBy { it.x + it.y }
+        val br = points.maxBy { it.x + it.y }
+        val tr = points.minBy { it.y - it.x }
+        val bl = points.maxBy { it.y - it.x }
+        val ordered = listOf(tl, tr, br, bl)
+        val edges = ordered.indices.map { i -> distance(ordered[i], ordered[(i + 1) % 4]) }
+        val diagonals = listOf(distance(tl, br), distance(tr, bl))
+        val oppositeHorizontal = edges[0] / edges[2].coerceAtLeast(1.0)
+        val oppositeVertical = edges[1] / edges[3].coerceAtLeast(1.0)
+        val diagonalRatio = diagonals.max() / diagonals.min().coerceAtLeast(1.0)
+        val cross = (tr.x - tl.x) * (bl.y - tl.y) - (tr.y - tl.y) * (bl.x - tl.x)
+        if (edges.any { it < 30.0 } || oppositeHorizontal !in 0.55..1.8 ||
+            oppositeVertical !in 0.55..1.8 || diagonalRatio > 1.9 || cross <= 0.0) {
+            throw IllegalStateException("المربعات المرجعية لا تشكل إطار ورقة صحيحاً. ضع الورقة كاملة داخل الكاميرا.")
         }
-
-        val top4 = candidates.sortedByDescending { it.first }.take(4).map { it.second }
-        val tl = top4.minBy { it.x + it.y }
-        val br = top4.maxBy { it.x + it.y }
-        val tr = top4.minBy { it.y - it.x }
-        val bl = top4.maxBy { it.y - it.x }
         return MatOfPoint2f(tl, tr, br, bl)
+    }
+
+    private fun distance(a: Point, b: Point): Double {
+        val dx = a.x - b.x
+        val dy = a.y - b.y
+        return kotlin.math.sqrt(dx * dx + dy * dy)
     }
 
     private fun bubbleFillRatio(thresh: Mat, x: Int, y: Int, r: Int): Double {
