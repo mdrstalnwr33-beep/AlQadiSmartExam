@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.alqadi.smartexam.model.ExamConfig
 import com.alqadi.smartexam.model.StudentResult
+import com.alqadi.smartexam.omr.ResultCardGenerator
 import com.alqadi.smartexam.omr.OmrProcessor
 import com.alqadi.smartexam.omr.SheetPdfGenerator
 import com.alqadi.smartexam.storage.ExamRepository
@@ -148,9 +149,11 @@ private fun AlQadiApp() {
         )
 
         is AppScreen.Result -> ResultScreen(
+            exam = current.exam,
             result = current.result,
             onBack = { screen = AppScreen.Results(current.exam) },
-            onNext = { screen = AppScreen.Scan(current.exam) }
+            onNext = { screen = AppScreen.Scan(current.exam) },
+            onSave = { updated -> ExamRepository.saveResult(context, updated) }
         )
 
         is AppScreen.Results -> ResultsScreen(
@@ -249,7 +252,9 @@ private fun AnswerKeyScreen(exam: ExamConfig, onBack: () -> Unit, onSave: (ExamC
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ResultScreen(result: StudentResult, onBack: () -> Unit, onNext: () -> Unit) {
+private fun ResultScreen(exam: ExamConfig, result: StudentResult, onBack: () -> Unit, onNext: () -> Unit, onSave: (StudentResult) -> Unit) {
+    val context = LocalContext.current
+    var studentName by remember(result.id) { mutableStateOf(result.studentName) }
     val bitmap = remember(result.debugImagePath) {
         result.debugImagePath?.let { if (File(it).exists()) BitmapFactory.decodeFile(it) else null }
     }
@@ -263,9 +268,37 @@ private fun ResultScreen(result: StudentResult, onBack: () -> Unit, onNext: () -
             Modifier.fillMaxSize().padding(padding).padding(14.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            OutlinedTextField(
+                value = studentName,
+                onValueChange = { studentName = it },
+                label = { Text("اسم الطالب لبطاقة النتيجة") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Button(onClick = { onSave(result.copy(studentName = studentName.trim())) }, modifier = Modifier.fillMaxWidth()) {
+                Text("حفظ اسم الطالب")
+            }
             Text("رقم الجلوس: ${result.rollNumber}", style = MaterialTheme.typography.titleMedium)
             Text("الدرجة: ${result.score} / ${result.maxScore}  (${result.percentage}%)", style = MaterialTheme.typography.headlineSmall)
             Text("صحيح: ${result.correctCount} • خطأ: ${result.wrongCount} • متروك: ${result.blankCount}")
+            Button(
+                onClick = {
+                    val namedResult = result.copy(studentName = studentName.trim())
+                    onSave(namedResult)
+                    val file = ResultCardGenerator.createImage(context, exam, namedResult)
+                    shareFile(context, file, "image/png", "مشاركة بطاقة النتيجة عبر واتساب أو تطبيق آخر")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("مشاركة بطاقة النتيجة صورة") }
+            OutlinedButton(
+                onClick = {
+                    val namedResult = result.copy(studentName = studentName.trim())
+                    onSave(namedResult)
+                    val file = ResultCardGenerator.createPdf(context, exam, namedResult)
+                    shareFile(context, file, "application/pdf", "مشاركة بطاقة النتيجة PDF")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("مشاركة بطاقة النتيجة PDF") }
             Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) { Text("مسح الورقة التالية") }
             bitmap?.let {
                 Image(it.asImageBitmap(), null, Modifier.fillMaxWidth())
@@ -296,7 +329,8 @@ private fun ResultsScreen(exam: ExamConfig, onBack: () -> Unit, onOpen: (Student
                 Card(onClick = { onOpen(result) }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
-                            Text("رقم الجلوس: ${result.rollNumber}", fontWeight = FontWeight.Bold)
+                            Text(result.studentName.ifBlank { "رقم الجلوس: ${result.rollNumber}" }, fontWeight = FontWeight.Bold)
+                            if (result.studentName.isNotBlank()) Text("رقم الجلوس: ${result.rollNumber}")
                             Text("${result.score} / ${result.maxScore}  •  ${result.percentage}%")
                         }
                         IconButton(onClick = {
