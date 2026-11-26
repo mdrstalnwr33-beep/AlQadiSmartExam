@@ -127,6 +127,7 @@ object ExamRepository {
                     wrongCount = o.getInt("wrongCount"),
                     blankCount = o.getInt("blankCount"),
                     debugImagePath = o.optString("debugImagePath").takeIf { it.isNotBlank() },
+                    studentName = o.optString("studentName"),
                     scannedAt = o.optLong("scannedAt", System.currentTimeMillis())
                 )
             )
@@ -151,6 +152,7 @@ object ExamRepository {
                 put("wrongCount", r.wrongCount)
                 put("blankCount", r.blankCount)
                 put("debugImagePath", r.debugImagePath ?: "")
+                put("studentName", r.studentName)
                 put("scannedAt", r.scannedAt)
             })
         }
