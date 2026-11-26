@@ -112,8 +112,8 @@ fun CameraScannerScreen(
         }
     }
 
-    fun captureNow() {
-        if (!autoCaptureStarted.compareAndSet(false, true)) return
+    fun captureNow(alreadyLocked: Boolean = false) {
+        if (!alreadyLocked && !autoCaptureStarted.compareAndSet(false, true)) return
         isProcessing = true
         imageCapture.takePicture(cameraExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
@@ -197,9 +197,7 @@ fun CameraScannerScreen(
                                                 if (Build.VERSION.SDK_INT >= 26) vibrator?.vibrate(VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE))
                                                 else @Suppress("DEPRECATION") vibrator?.vibrate(120)
                                             } catch (_: Exception) { }
-                                            // Release the latch momentarily so captureNow can own it.
-                                            autoCaptureStarted.set(false)
-                                            captureNow()
+                                            captureNow(alreadyLocked = true)
                                         }
                                     }
                                 }
